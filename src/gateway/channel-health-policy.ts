@@ -5,6 +5,7 @@ export type ChannelHealthSnapshot = {
   configured?: boolean;
   lastEventAt?: number | null;
   lastStartAt?: number | null;
+  lastDisconnectAt?: number | null;
   reconnectAttempts?: number;
 };
 
@@ -13,6 +14,7 @@ export type ChannelHealthEvaluationReason =
   | "unmanaged"
   | "not-running"
   | "startup-connect-grace"
+  | "reconnect-grace"
   | "disconnected"
   | "stale-socket";
 
@@ -50,6 +52,16 @@ export function evaluateChannelHealth(
     }
   }
   if (snapshot.connected === false) {
+    // Allow a grace period for WebSocket reconnection cycles.
+    // Without this, normal reconnect attempts (where connected briefly flips
+    // to false) would be flagged as unhealthy, causing unnecessary provider
+    // restarts that leak event listeners and duplicate messages (#31710).
+    if (snapshot.lastDisconnectAt != null) {
+      const disconnectAge = policy.now - snapshot.lastDisconnectAt;
+      if (disconnectAge < policy.channelConnectGraceMs) {
+        return { healthy: true, reason: "reconnect-grace" };
+      }
+    }
     return { healthy: false, reason: "disconnected" };
   }
   if (snapshot.lastEventAt != null || snapshot.lastStartAt != null) {

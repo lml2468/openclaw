@@ -127,7 +127,13 @@ export function startChannelHealthMonitor(deps: ChannelHealthMonitorDeps): Chann
             staleEventThresholdMs: timing.staleEventThresholdMs,
             channelConnectGraceMs: timing.channelConnectGraceMs,
           };
-          const health = evaluateChannelHealth(status, healthPolicy);
+          // Extract lastDisconnectAt from the channel account snapshot so
+          // the health policy can apply a reconnect grace period (#31710).
+          const lastDisconnectAt =
+            status.lastDisconnect != null && typeof status.lastDisconnect === "object"
+              ? status.lastDisconnect.at
+              : undefined;
+          const health = evaluateChannelHealth({ ...status, lastDisconnectAt }, healthPolicy);
           if (health.healthy) {
             continue;
           }
