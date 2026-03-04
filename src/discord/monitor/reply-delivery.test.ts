@@ -21,6 +21,11 @@ vi.mock("../send.shared.js", () => ({
   sendDiscordText: (...args: unknown[]) => sendDiscordTextMock(...args),
 }));
 
+vi.mock("../../utils.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils.js")>();
+  return { ...actual, sleep: vi.fn().mockResolvedValue(undefined) };
+});
+
 describe("deliverDiscordReply", () => {
   const runtime = {} as RuntimeEnv;
   const createBoundThreadBindings = async (

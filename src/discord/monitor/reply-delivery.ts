@@ -48,9 +48,9 @@ function extractHttpStatus(err: unknown): number | undefined {
   // e.g. "Discord webhook send failed (429: ...)". Extract as fallback.
   const message = (err as { message?: string }).message;
   if (typeof message === "string") {
-    const match = message.match(/\((\d{3})\b/);
+    const match = message.match(/(?:\((\d{3})\b|\b(\d{3})\s)/);
     if (match) {
-      return Number(match[1]);
+      return Number(match[1] ?? match[2]);
     }
   }
   return undefined;
