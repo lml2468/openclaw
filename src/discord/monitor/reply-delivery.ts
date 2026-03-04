@@ -36,8 +36,28 @@ const DISCORD_DELIVERY_RETRY_DEFAULTS: ResolvedRetryConfig = {
   jitter: 0,
 };
 
-function isRetryableDiscordError(err: unknown): boolean {
+function extractHttpStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") {
+    return undefined;
+  }
   const status = (err as { status?: number }).status ?? (err as { statusCode?: number }).statusCode;
+  if (typeof status === "number" && Number.isFinite(status)) {
+    return status;
+  }
+  // sendWebhookMessageDiscord throws plain Error with status in message,
+  // e.g. "Discord webhook send failed (429: ...)". Extract as fallback.
+  const message = (err as { message?: string }).message;
+  if (typeof message === "string") {
+    const match = message.match(/\((\d{3})\b/);
+    if (match) {
+      return Number(match[1]);
+    }
+  }
+  return undefined;
+}
+
+function isRetryableDiscordError(err: unknown): boolean {
+  const status = extractHttpStatus(err);
   return status === 429 || (status !== undefined && status >= 500);
 }
 
@@ -147,19 +167,30 @@ async function sendDiscordChunkWithFallback(params: {
   }
   const text = params.text;
   const binding = params.binding;
-  if (binding?.webhookId && binding?.webhookToken) {
+  const webhookId = binding?.webhookId;
+  const webhookToken = binding?.webhookToken;
+  if (webhookId && webhookToken && binding) {
     try {
-      await sendWebhookMessageDiscord(text, {
-        webhookId: binding.webhookId,
-        webhookToken: binding.webhookToken,
-        accountId: binding.accountId,
-        threadId: binding.threadId,
-        replyTo: params.replyTo,
-        username: params.username,
-        avatarUrl: params.avatarUrl,
-      });
+      await sendWithRetry(
+        () =>
+          sendWebhookMessageDiscord(text, {
+            webhookId,
+            webhookToken,
+            accountId: binding.accountId,
+            threadId: binding.threadId,
+            replyTo: params.replyTo,
+            username: params.username,
+            avatarUrl: params.avatarUrl,
+          }),
+        params.retryConfig,
+      );
       return;
-    } catch {
+    } catch (err) {
+      // Only fall through to bot sender for non-retryable errors.
+      // Retryable errors (429/5xx) were already retried and exhausted.
+      if (isRetryableDiscordError(err)) {
+        throw err;
+      }
       // Fall through to the standard bot sender path.
     }
   }
@@ -315,12 +346,16 @@ export async function deliverDiscordReply(params: {
     // Voice message path: audioAsVoice flag routes through sendVoiceMessageDiscord.
     if (payload.audioAsVoice) {
       const replyTo = resolveReplyTo();
-      await sendVoiceMessageDiscord(params.target, firstMedia, {
-        token: params.token,
-        rest: params.rest,
-        accountId: params.accountId,
-        replyTo,
-      });
+      await sendWithRetry(
+        () =>
+          sendVoiceMessageDiscord(params.target, firstMedia, {
+            token: params.token,
+            rest: params.rest,
+            accountId: params.accountId,
+            replyTo,
+          }),
+        retryConfig,
+      );
       deliveredAny = true;
       // Voice messages cannot include text; send remaining text separately if present.
       await sendDiscordChunkWithFallback({
@@ -352,14 +387,18 @@ export async function deliverDiscordReply(params: {
     }
 
     const replyTo = resolveReplyTo();
-    await sendMessageDiscord(params.target, text, {
-      token: params.token,
-      rest: params.rest,
-      mediaUrl: firstMedia,
-      accountId: params.accountId,
-      mediaLocalRoots: params.mediaLocalRoots,
-      replyTo,
-    });
+    await sendWithRetry(
+      () =>
+        sendMessageDiscord(params.target, text, {
+          token: params.token,
+          rest: params.rest,
+          mediaUrl: firstMedia,
+          accountId: params.accountId,
+          mediaLocalRoots: params.mediaLocalRoots,
+          replyTo,
+        }),
+      retryConfig,
+    );
     deliveredAny = true;
     await sendAdditionalDiscordMedia({
       target: params.target,
