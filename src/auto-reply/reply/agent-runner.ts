@@ -122,6 +122,14 @@ export async function runReplyAgent(params: {
   const activeSessionStore = sessionStore;
   let activeIsNewSession = isNewSession;
 
+  // Early exit if session was halted due to compaction failure.
+  if (activeSessionEntry?.haltedAt) {
+    const haltMessage =
+      followupRun.run.config?.agents?.defaults?.compaction?.onFailureMessage ??
+      "\u26a0\ufe0f Session halted: compaction failed. Use /new to start a fresh session.";
+    return { text: haltMessage };
+  }
+
   const isHeartbeat = opts?.isHeartbeat === true;
   const typingSignals = createTypingSignaler({
     typing,
