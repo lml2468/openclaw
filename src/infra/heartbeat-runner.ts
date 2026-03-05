@@ -665,8 +665,12 @@ export async function runHeartbeatOnce(opts: {
     accountId: delivery.accountId,
   }).responsePrefix;
 
+  // When delivery.to is the "heartbeat" placeholder (no real user has
+  // interacted yet), suppress delivery to avoid sending to channels that
+  // don't recognize "heartbeat" as a valid user ID (#35300).
+  const isPlaceholderTarget = delivery.to === "heartbeat";
   const canRelayToUser = Boolean(
-    delivery.channel !== "none" && delivery.to && visibility.showAlerts,
+    delivery.channel !== "none" && delivery.to && !isPlaceholderTarget && visibility.showAlerts,
   );
   const { prompt, hasExecCompletion, hasCronEvents } = resolveHeartbeatRunPrompt({
     cfg,
@@ -678,10 +682,15 @@ export async function runHeartbeatOnce(opts: {
     Body: appendCronStyleCurrentTimeLine(prompt, cfg, startedAt),
     From: sender,
     To: sender,
-    OriginatingChannel: delivery.channel !== "none" ? delivery.channel : undefined,
-    OriginatingTo: delivery.to,
-    AccountId: delivery.accountId,
-    MessageThreadId: delivery.threadId,
+    // When the delivery target is a placeholder ("heartbeat"), don't set
+    // OriginatingChannel/To.  Otherwise the session's deliveryContext gets
+    // polluted with the placeholder, causing cross-channel delivery errors
+    // on subsequent turns (#35300).
+    OriginatingChannel:
+      delivery.channel !== "none" && !isPlaceholderTarget ? delivery.channel : undefined,
+    OriginatingTo: !isPlaceholderTarget ? delivery.to : undefined,
+    AccountId: !isPlaceholderTarget ? delivery.accountId : undefined,
+    MessageThreadId: !isPlaceholderTarget ? delivery.threadId : undefined,
     Provider: hasExecCompletion ? "exec-event" : hasCronEvents ? "cron-event" : "heartbeat",
     SessionKey: sessionKey,
   };
