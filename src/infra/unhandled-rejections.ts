@@ -273,10 +273,6 @@ const RECOVERABLE_UNCAUGHT_PATTERNS: Array<{
  * that cannot be caught via unhandledRejection handlers.
  */
 export function isRecoverableUncaughtException(error: unknown): boolean {
-  if (isTransientNetworkError(error)) {
-    return true;
-  }
-
   if (!error || typeof error !== "object") {
     return false;
   }

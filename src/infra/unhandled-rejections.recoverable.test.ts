@@ -17,9 +17,9 @@ describe("isRecoverableUncaughtException", () => {
     expect(isRecoverableUncaughtException(error)).toBe(true);
   });
 
-  it("returns true for transient network errors", () => {
+  it("does not recover transient network errors (only TLS race conditions)", () => {
     const error = Object.assign(new Error("connect ECONNRESET"), { code: "ECONNRESET" });
-    expect(isRecoverableUncaughtException(error)).toBe(true);
+    expect(isRecoverableUncaughtException(error)).toBe(false);
   });
 
   it("returns false for unrelated TypeError", () => {
