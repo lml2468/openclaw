@@ -1166,7 +1166,14 @@ export function startHeartbeatRunner(opts: {
           sessionKey: requestedSessionKey,
           deps: { runtime: state.runtime },
         });
-        if (res.status !== "skipped" || res.reason !== "disabled") {
+        // Only advance the schedule when the heartbeat actually ran or was
+        // skipped for a definitive reason.  requests-in-flight means the main
+        // lane was busy — advancing lastRunMs here would block the retry from
+        // heartbeat-wake due to the cooldown check (#33057).
+        if (
+          res.status !== "skipped" ||
+          (res.reason !== "disabled" && res.reason !== "requests-in-flight")
+        ) {
           advanceAgentSchedule(targetAgent, now);
         }
         scheduleNext();
@@ -1182,6 +1189,7 @@ export function startHeartbeatRunner(opts: {
       }
     }
 
+    let allCooldown = !isInterval;
     for (const agent of state.agents.values()) {
       if (isInterval && now < agent.nextDueMs) {
         continue;
@@ -1193,6 +1201,7 @@ export function startHeartbeatRunner(opts: {
       ) {
         continue;
       }
+      allCooldown = false;
 
       let res: HeartbeatRunResult;
       try {
@@ -1230,7 +1239,10 @@ export function startHeartbeatRunner(opts: {
     if (ran) {
       return { status: "ran", durationMs: Date.now() - startedAt };
     }
-    return { status: "skipped", reason: isInterval ? "not-due" : "disabled" };
+    return {
+      status: "skipped",
+      reason: isInterval ? "not-due" : allCooldown ? "cooldown" : "disabled",
+    };
   };
 
   const wakeHandler: HeartbeatWakeHandler = async (params) =>
