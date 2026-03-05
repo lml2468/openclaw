@@ -219,12 +219,12 @@ export function registerCronAddCommand(cron: Command) {
               : undefined;
 
           // Check if the user explicitly provided --channel (not just the
-          // default "last") or --to, indicating intent to set delivery context.
+          // default "last").  --to alone is not sufficient because the heartbeat
+          // runner may silently ignore `to` when `target` is "last" (#34572).
           const hasExplicitDeliveryTarget =
-            (typeof opts.channel === "string" &&
-              opts.channel.trim() &&
-              opts.channel.trim() !== "last") ||
-            (typeof opts.to === "string" && opts.to.trim());
+            typeof opts.channel === "string" &&
+            opts.channel.trim() &&
+            opts.channel.trim() !== "last";
 
           if (accountId && (sessionTarget !== "isolated" || payload.kind !== "agentTurn")) {
             // Allow --account for main+systemEvent+wake-now when --channel/--to
