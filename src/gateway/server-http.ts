@@ -439,6 +439,7 @@ export function createHooksRequestHandler(
             : rawResult.error === "request body timeout"
               ? 408
               : 400;
+        hookAuthLimiter.recordFailure(clientKey, AUTH_RATE_LIMIT_SCOPE_HOOK_AUTH);
         sendJson(res, status, { ok: false, error: rawResult.error });
         return true;
       }
