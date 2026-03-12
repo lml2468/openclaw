@@ -94,7 +94,7 @@ def run_write(args):
         # broken pipe). Creating a new empty file is still allowed. (#43858)
         if written == 0:
             try:
-                os.stat(basename, dir_fd=parent_fd)
+                os.lstat(basename, dir_fd=parent_fd)
                 raise RuntimeError(
                     "Refusing to overwrite existing file with empty content "
                     "(stdin was empty or truncated)"
