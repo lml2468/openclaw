@@ -586,17 +586,28 @@ export async function runMemoryFlushIfNeeded(params: {
     }
     if (params.storePath && params.sessionKey) {
       try {
+        // Re-hash the transcript AFTER the flush so the stored hash matches
+        // what the next pre-flush check will compute (the transcript now
+        // includes the flush turn's messages). (#34222)
+        let contextHashAfterFlush = contextHashBeforeFlush;
+        if (sessionFilePath) {
+          try {
+            const postFlushMessages = await readTranscriptTailMessages(sessionFilePath, 10);
+            if (postFlushMessages.length > 0) {
+              contextHashAfterFlush = computeContextHash(postFlushMessages);
+            }
+          } catch {
+            // Best-effort: fall back to pre-flush hash if re-read fails.
+          }
+        }
         const updatedEntry = await updateSessionStoreEntry({
           storePath: params.storePath,
           sessionKey: params.sessionKey,
           update: async () => ({
             memoryFlushAt: Date.now(),
             memoryFlushCompactionCount,
-            // Use the hash computed *before* the flush run. Reading after flush
-            // would include the flush turn's own messages, making the hash differ
-            // from what the next pre-flush check computes — dedup would never match.
-            ...(contextHashBeforeFlush != null
-              ? { memoryFlushContextHash: contextHashBeforeFlush }
+            ...(contextHashAfterFlush != null
+              ? { memoryFlushContextHash: contextHashAfterFlush }
               : {}),
           }),
         });
