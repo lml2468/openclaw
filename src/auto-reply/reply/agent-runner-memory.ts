@@ -482,7 +482,8 @@ export async function runMemoryFlushIfNeeded(params: {
         return entry ?? params.sessionEntry;
       }
     } catch (err) {
-      // If we can't read the transcript, fall through and allow the flush.
+      // If we can't read the transcript (file may not exist yet in new-session
+      // flows), fall through and allow the flush.
       logVerbose(`memoryFlush hash check failed, proceeding with flush: ${String(err)}`);
     }
   }
@@ -645,17 +646,10 @@ async function resolveSessionFilePathForFlush(
   )?.transcriptPath?.trim();
   const sessionFile = entry?.sessionFile?.trim() || transcriptPath;
   try {
-    const resolved = resolveSessionFilePath(
-      sessionId,
-      sessionFile ? { sessionFile } : entry,
-      pathOpts,
-    );
-    try {
-      await fs.promises.access(resolved);
-      return resolved;
-    } catch {
-      // fall through — resolved path doesn't exist
-    }
+    // Return the normalized path even if the file does not exist yet.
+    // In reset/new-session flows the transcript is created by the flush run
+    // itself; callers handle non-existent files via their own try-catch (#34222).
+    return resolveSessionFilePath(sessionId, sessionFile ? { sessionFile } : entry, pathOpts);
   } catch {
     // resolveSessionFilePath threw — normalization failed, skip dedup rather
     // than reading from an unnormalized (potentially stale) path.
