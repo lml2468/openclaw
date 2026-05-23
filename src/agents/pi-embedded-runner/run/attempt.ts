@@ -3311,7 +3311,7 @@ export async function runEmbeddedAttempt(
         cancel: () => {
           abortRun();
         },
-        abort: abortRun,
+        abort: (reason?: unknown) => abortRun(false, reason),
       };
       let lastAssistant: AssistantMessage | undefined;
       let currentAttemptAssistant: EmbeddedRunAttemptResult["currentAttemptAssistant"];

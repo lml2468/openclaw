@@ -1,10 +1,10 @@
 import { importFreshModule } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { diagnosticLogger } from "../../logging/diagnostic.js";
 import {
   testing as replyRunTesting,
   createReplyOperation,
 } from "../../auto-reply/reply/reply-run-registry.js";
+import { diagnosticLogger } from "../../logging/diagnostic.js";
 import {
   testing,
   abortAndDrainEmbeddedPiRun,
@@ -271,12 +271,34 @@ describe("pi-embedded runner run registry", () => {
 
       expect(result).toEqual({ aborted: true, drained: false, forceCleared: true });
       expect(abortRun).toHaveBeenCalledTimes(1);
+      expect(abortRun).toHaveBeenCalledWith("test_timeout");
       expect(isEmbeddedPiRunHandleActive("session-stuck")).toBe(false);
       expect(resolveActiveEmbeddedRunHandleSessionId("agent:main")).toBeUndefined();
     } finally {
       await vi.runOnlyPendingTimersAsync();
       vi.useRealTimers();
     }
+  });
+
+  it("forwards stuck_recovery reason to handle.abort as the first argument", async () => {
+    let handle: RunHandle | undefined;
+    const abortRun = vi.fn(() => {
+      if (handle) {
+        clearActiveEmbeddedRun("session-stuck-recovery", handle, "agent:recovery");
+      }
+    });
+    handle = createRunHandle({ abort: abortRun });
+    setActiveEmbeddedRun("session-stuck-recovery", handle, "agent:recovery");
+
+    await abortAndDrainEmbeddedPiRun({
+      sessionId: "session-stuck-recovery",
+      sessionKey: "agent:recovery",
+      settleMs: 0,
+      reason: "stuck_recovery",
+    });
+
+    expect(abortRun).toHaveBeenCalledTimes(1);
+    expect(abortRun).toHaveBeenCalledWith("stuck_recovery");
   });
 
   it("waits for active runs to drain", async () => {
